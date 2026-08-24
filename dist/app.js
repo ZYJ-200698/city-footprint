@@ -1062,6 +1062,7 @@ async function boot() {
   bindSheet();
   bindMe();
   applyTheme();
+  applyInstallGuide();
   // 首次用户手势内恢复 AudioContext，使后续特效音效可正常播放
   document.addEventListener('pointerdown', () => {
     const c = getAudioCtx();
@@ -1129,6 +1130,20 @@ async function forceRefresh() {
       location.reload();
     }
   }
+}
+
+function applyInstallGuide() {
+  // 平台自适应：「我的 → 安装到主屏幕」文案按 UA 切换 iOS / Android / 其他，避免安卓用户看到 Safari 步骤。
+  // 默认 iOS 已在 HTML 显式展示（hidden 属性仅在 JS 匹配时移除），关闭 JS 也能看到一条可用提示。
+  const guide = $('#install-guide');
+  if (!guide) return;
+  const ua = (navigator.userAgent || '').toLowerCase();
+  const isIOS = /iphone|ipad|ipod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isAndroid = /android/.test(ua);
+  const target = isIOS ? 'ios' : (isAndroid ? 'android' : 'other');
+  guide.querySelectorAll('[data-os]').forEach(el => {
+    el.hidden = el.dataset.os !== target;
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {

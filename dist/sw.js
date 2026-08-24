@@ -1,5 +1,5 @@
 /* 城市足迹 Service Worker：核心预缓存 + 省级地图运行时缓存，全离线可用 */
-const CACHE = 'fp-v20';
+const CACHE = 'fp-v21';
 const CORE = [
   './',
   './index.html',
@@ -14,6 +14,8 @@ const CORE = [
   './assets/fx/cloud_r.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './icons/icon-maskable-192.png',
+  './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png',
   './icons/favicon-32.png',
 ];
