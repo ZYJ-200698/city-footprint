@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1565C0">
+<title>城市足迹</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- 启动屏 -->
+<div id="splash">
+  <img src="icons/icon-192.png" alt="城市足迹">
+  <h1>城市足迹</h1>
+  <p>记录你去过的每一座城市</p>
+  <div class="splash-bar"><i></i></div>
+</div>
+
+<!-- 顶部栏 -->
+<header id="topbar">
+  <button id="btn-back" class="hidden" aria-label="返回">‹</button>
+  <h1 id="topbar-title">城市足迹</h1>
+  <div id="map-switch" class="seg hidden">
+    <button data-scope="china" class="on">中国</button><button data-scope="world">世界</button>
+  </div>
+</header>
+
+<!-- 主内容区 -->
+<main id="main">
+  <!-- 地图视图 -->
+  <section id="view-map" class="view">
+    <div id="map"></div>
+    <div id="map-hint">点击省份，点亮你的足迹</div>
+  </section>
+
+  <!-- 清单视图 -->
+  <section id="view-list" class="view hidden">
+    <div class="search-box">
+      <input id="search" type="search" placeholder="搜索城市 / 省份 / 国家…">
+    </div>
+    <div id="list"></div>
+  </section>
+
+  <!-- 统计视图 -->
+  <section id="view-stats" class="view hidden">
+    <div class="stats-top">
+      <h2>足迹统计</h2>
+      <button id="btn-share" class="btn btn-ghost btn-sm">📤 分享足迹</button>
+    </div>
+    <div id="stats-cards"></div>
+    <div id="stats-timeline"></div>
+    <div id="stats-wish"></div>
+    <div id="stats-recent"></div>
+  </section>
+
+  <!-- 我的视图 -->
+  <section id="view-me" class="view hidden">
+    <div class="me-block">
+      <h3>数据备份</h3>
+      <p class="me-desc">数据仅保存在本机，换机/清理浏览器前请先导出备份。</p>
+      <div class="me-row">
+        <button id="btn-export" class="btn">导出备份</button>
+        <button id="btn-import" class="btn btn-ghost">导入备份</button>
+        <input id="file-import" type="file" accept="application/json" class="hidden">
+      </div>
+      <p id="storage-info" class="me-desc"></p>
+    </div>
+    <div class="me-block">
+      <h3>安装到主屏幕</h3>
+      <p class="me-desc">用 Safari 打开本页 → 点底部「分享」→「添加到主屏幕」，即可像普通 App 一样使用，支持离线。</p>
+    </div>
+    <div class="me-block">
+      <h3>外观</h3>
+      <div class="me-row me-row-toggle">
+        <span>深色模式</span>
+        <button id="theme-toggle" role="switch" aria-checked="false" class="switch"><i></i></button>
+      </div>
+    </div>
+    <div class="me-block">
+      <h3>体验</h3>
+      <button id="btn-replay-boot" class="me-btn">☁️ 重看入场特效（开云雾散）</button>
+      <p class="me-desc">启动时会在启动屏关闭后自动播放一次「拨云见日」。点此处可随时再播一次。</p>
+      <button id="btn-force-refresh" class="me-btn" style="margin-top:10px">🔄 强制刷新缓存（更新到最新版）</button>
+      <p class="me-desc">iPhone 桌面图标的 PWA 偶尔会缓存老代码导致看不到新特效。点此会强制更新 Service Worker 并刷新页面。</p>
+    </div>
+    <div class="me-block">
+      <h3>关于</h3>
+      <p class="me-desc">城市足迹 v2.8 · 数据仅存本机，不上传任何服务器。<br>地图数据来源：高德 DataV GeoAtlas（中国）、Natural Earth（世界）。</p>
+    </div>
+  </section>
+</main>
+
+<!-- 底部 Tab 栏 -->
+<nav id="tabbar">
+  <button data-tab="map" class="on"><span class="tab-ico">🗺️</span>地图</button>
+  <button data-tab="list"><span class="tab-ico">📋</span>清单</button>
+  <button data-tab="stats"><span class="tab-ico">📊</span>统计</button>
+  <button data-tab="me"><span class="tab-ico">⚙️</span>我的</button>
+</nav>
+
+<!-- 记录编辑底部弹层 -->
+<div id="sheet-mask" class="hidden"></div>
+<div id="sheet" class="hidden">
+  <div class="sheet-handle"></div>
+  <div class="sheet-head-row">
+    <h2 id="sheet-title"></h2>
+    <button id="sheet-wish" class="wish-star" aria-label="想去这里" title="想去这里">☆</button>
+  </div>
+  <p id="sheet-sub"></p>
+  <div class="sheet-visited-row">
+    <span>我去过这里</span>
+    <button id="sheet-toggle" role="switch" aria-checked="false"><i></i></button>
+  </div>
+  <div id="sheet-body" class="disabled">
+    <label class="fld"><span>首次到访</span><input id="fld-date" type="date"></label>
+    <label class="fld"><span>去过几次</span>
+      <div class="stepper">
+        <button id="times-minus">−</button><b id="times-num">1</b><button id="times-plus">＋</button>
+      </div>
+    </label>
+    <label class="fld fld-col"><span>旅行笔记</span>
+      <textarea id="fld-note" rows="3" placeholder="记录这里的见闻、美食、同行的人…"></textarea>
+    </label>
+    <div class="fld fld-col">
+      <span>照片</span>
+      <div id="photos"></div>
+      <button id="btn-add-photo" class="btn btn-ghost btn-sm">＋ 添加照片</button>
+      <input id="file-photo" type="file" accept="image/*" multiple class="hidden">
+    </div>
+  </div>
+</div>
+
+<!-- 世界国家选择弹层 -->
+<div id="country-sheet" class="hidden">
+  <div class="sheet-handle"></div>
+  <div class="sheet-head-row">
+    <h2 id="country-title"></h2>
+    <button id="country-wish" class="wish-star" aria-label="想去这里" title="想去这里">☆</button>
+  </div>
+  <div id="country-cities"></div>
+</div>
+
+<!-- 照片查看 -->
+<div id="photo-viewer" class="hidden"><img id="photo-full" alt=""><button id="photo-close">✕</button></div>
+
+<div id="toast" class="hidden"></div>
+
+<!-- 入场特效：开云雾散 / 拨云见日（boot，统一用于所有导航与记录层）
+     两团写实积云从中央拨向两侧、中央见日光晕、天空淡出。点开省份、城市、世界、国家弹层均会播放。 -->
+<div id="reveal-fx" aria-hidden="true">
+  <!-- (A) 开云雾散 / 拨云见日 -->
+  <div class="fx-sky"></div>
+  <div class="fx-boot">
+    <div class="c-haze"></div>
+    <div class="c-piece c-left"></div>
+    <div class="c-piece c-right"></div>
+    <div class="sun"></div>
+  </div>
+  <!-- (B) 穿云俯冲 -->
+  <div class="fx-haze"></div>
+  <div class="fx-cloud">
+    <div class="fx-blob b3"></div>
+    <div class="fx-blob b1"></div>
+    <div class="fx-blob b2"></div>
+  </div>
+</div>
+
+<script src="lib/echarts.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

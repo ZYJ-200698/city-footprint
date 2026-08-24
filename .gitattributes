@@ -1,0 +1,7 @@
+# 跨平台换行一致：文本统一 LF，二进制原样
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.tgz binary
+*.woff binary
+*.woff2 binary

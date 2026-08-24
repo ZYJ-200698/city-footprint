@@ -1,0 +1,21 @@
+# ===== OS / 编辑器垃圾 =====
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
+# ===== 依赖与离线归档包（可从 npm 重新获取，不入库） =====
+node_modules/
+*.tgz
+
+# ===== 本地构建工具的输出（tools/ 下的 Python 脚本保留，压缩包的提取产物忽略） =====
+tools/package/
+
+# ===== 验证截图（视觉证据，非源码；verify*.js 断言脚本保留） =====
+tests/*.png
+tests/videoframes/
+tests/vf2/
+
+# ===== 云特效中间/预览素材（运行时只用 cloud_l.png / cloud_r.png） =====
+src/assets/fx/_preview*
+src/assets/fx/A_single*
