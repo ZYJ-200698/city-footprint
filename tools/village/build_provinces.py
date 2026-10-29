@@ -294,13 +294,33 @@ def pick_field(fields, rows, pattern, numeric=False, max_len=None):
     return best if best_score >= max(2, n * 0.12) else None
 
 
+NAME_EXPLICIT = [
+    "村级名", "村名称", "村名", "名称", "行政村", "村级", "XZQMC", "xzqmc", "CJDCQMC",
+    "zldwmc", "sqmc", "CUNMC", "comname", "BLOCK_NAME", "NAME", "name", "Name",
+    "area_name", "CZCUNMC", "SQCMC", "cun_name", "CUN_MC", "XZQM", "CNAME", "NAME_TC",
+]
+
+
 def pick_name_field(fields, rows):
-    """优先按「村名后缀命中率」；港澳等无村级建制时退化为「短中文串」判定。"""
+    """三级判定：① 官方映射里的村名字段名，且值确实是中文；② 村名后缀命中率；③ 短中文串兜底。
+    上海等省字段名大量乱码但仍有可读的「名称」，所以①必须优先于启发式。"""
+    n = min(len(rows), 200)
+    if n == 0:
+        return None, None
+
+    def cjk_ratio(idx):
+        vals = [rows[i][idx] or "" for i in range(n)]
+        return sum(1 for v in vals if re.search(r"[\u4e00-\u9fff]", v)) / n
+
+    for cand in NAME_EXPLICIT:
+        if cand in fields and cjk_ratio(fields.index(cand)) >= 0.6:
+            return cand, "explicit"
+
     f = pick_field(fields, rows, VILLAGE_SUFFIX)
     if f:
         return f, "suffix"
+
     best, best_score = None, 0
-    n = min(len(rows), 200)
     for idx, name in enumerate(fields):
         ok = sum(
             1
@@ -309,7 +329,7 @@ def pick_name_field(fields, rows):
         )
         if ok > best_score:
             best, best_score = name, ok
-    return (best, "fallback") if best_score >= max(2, n * 0.5) else (None, None)
+    return (best, "fallback") if best_score >= n * 0.7 else (None, None)
 
 
 # ---------------- WGS84 -> GCJ-02 ----------------
