@@ -597,3 +597,69 @@ button { font-family: inherit; }
   #reveal-fx.show.dive .fx-blob { animation-duration: .01ms; }
   #reveal-fx .fx-blob { transform: none; opacity: 0; }
 }
+
+/* ============ 周边发现（村级点位） ============ */
+#nearby-fab {
+  position: absolute; right: 14px; bottom: 20px;
+  width: 48px; height: 48px; border: none; border-radius: 50%;
+  background: var(--card); color: var(--text);
+  font-size: 21px; line-height: 1;
+  box-shadow: 0 6px 18px rgba(16, 24, 40, .18);
+  z-index: 120; cursor: pointer;
+  transition: transform .18s, box-shadow .18s, background .18s;
+}
+#nearby-fab:active { transform: scale(.94); }
+#nearby-fab.picking {
+  background: var(--accent); color: #fff;
+  box-shadow: 0 0 0 6px rgba(255, 112, 67, .18), 0 6px 18px rgba(16, 24, 40, .22);
+}
+#nearby-mask {
+  position: fixed; inset: 0; background: rgba(16, 24, 40, .5); z-index: 160;
+  backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+}
+#nearby-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 160;
+  background: var(--card); border-radius: 22px 22px 0 0; color: var(--text);
+  padding: 8px 20px calc(20px + var(--safe-bottom));
+  max-height: 76vh; overflow-y: auto;
+  box-shadow: var(--shadow-pop);
+  animation: rise .28s cubic-bezier(.2, .9, .3, 1);
+}
+#nearby-sheet h2 { font-size: 20px; font-weight: 800; }
+#nearby-sub { font-size: 12.5px; color: var(--text-2); margin: 3px 0 12px; }
+.nr-icon-btn {
+  width: 32px; height: 32px; border: none; border-radius: 50%;
+  background: rgba(150, 160, 180, .16); color: var(--text-2);
+  font-size: 14px; cursor: pointer; flex: 0 0 auto;
+}
+#nearby-actions { display: flex; gap: 10px; margin-bottom: 10px; }
+.nr-btn {
+  flex: 1; padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px;
+  background: transparent; color: var(--text); font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: background .18s, border-color .18s, color .18s;
+}
+.nr-btn:active { background: rgba(150, 160, 180, .12); }
+.nr-btn.on { border-color: var(--accent); color: var(--accent-deep); }
+#nearby-radius { display: flex; gap: 8px; margin-bottom: 10px; }
+#nearby-radius button {
+  flex: 1; padding: 7px 0; border: 1px solid var(--line); border-radius: 999px;
+  background: transparent; color: var(--text-2); font-size: 12.5px; cursor: pointer;
+  transition: background .18s, color .18s, border-color .18s;
+}
+#nearby-radius button.on {
+  background: linear-gradient(135deg, #FF8A50, var(--accent-deep));
+  border-color: transparent; color: #fff; font-weight: 700;
+}
+.nr-search-box { margin: 0 0 10px; }
+.nr-search-box input { width: 100%; }
+#nearby-status { font-size: 12.5px; color: var(--text-2); margin: 2px 0 10px; min-height: 17px; }
+#nearby-list { display: flex; flex-direction: column; }
+.nr-row {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 10px 2px; border-bottom: 1px solid var(--line);
+  font-size: 14.5px; cursor: pointer;
+}
+.nr-row:last-child { border-bottom: none; }
+.nr-row .nr-name { font-weight: 600; flex: 1; }
+.nr-row .nr-town { font-size: 12px; color: var(--text-2); }
+.nr-row .nr-dist { font-size: 12.5px; color: var(--accent-deep); font-variant-numeric: tabular-nums; }

@@ -1027,6 +1027,266 @@ function switchTab(tab) {
   }
 }
 
+/* ================= 周边发现（村级点位 · 云南试点） =================
+   数据：assets/data/village/52.json（13,554 个村的中心点，已统一为 GCJ-02）
+   原则：点位只用于「算距离」，不用于「画地图」——底图合规性由现有地图负责。
+   坐标红线：浏览器定位返回 WGS84，必须转 GCJ-02 再与村点比较，否则偏移数百米。 */
+const NR = {
+  data: null,
+  loading: null,
+  radius: 10,
+  pickMode: false,
+  origin: null,
+  results: [],
+};
+
+const NR_DATA_URL = 'assets/data/village/52.json';
+
+function haversineKm(aLng, aLat, bLng, bLat) {
+  const R = 6371;
+  const toRad = Math.PI / 180;
+  const dLat = (bLat - aLat) * toRad;
+  const dLng = (bLng - aLng) * toRad;
+  const la1 = aLat * toRad;
+  const la2 = bLat * toRad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/* WGS84 → GCJ-02 */
+function wgs2gcj(lng, lat) {
+  const A = 6378245.0;
+  const EE = 0.00669342162296594323;
+  if (!(lng > 72.004 && lng < 137.8347 && lat > 0.8293 && lat < 55.8271)) return [lng, lat];
+  const tLat = (x, y) => {
+    let r = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+    r += (20 * Math.sin(6 * x * Math.PI) + 20 * Math.sin(2 * x * Math.PI)) * 2 / 3;
+    r += (20 * Math.sin(y * Math.PI) + 40 * Math.sin(y / 3 * Math.PI)) * 2 / 3;
+    r += (160 * Math.sin(y / 12 * Math.PI) + 320 * Math.sin(y * Math.PI / 30)) * 2 / 3;
+    return r;
+  };
+  const tLng = (x, y) => {
+    let r = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+    r += (20 * Math.sin(6 * x * Math.PI) + 20 * Math.sin(2 * x * Math.PI)) * 2 / 3;
+    r += (20 * Math.sin(x * Math.PI) + 40 * Math.sin(x / 3 * Math.PI)) * 2 / 3;
+    r += (150 * Math.sin(x / 12 * Math.PI) + 300 * Math.sin(x / 30 * Math.PI)) * 2 / 3;
+    return r;
+  };
+  let dLat = tLat(lng - 105, lat - 35);
+  let dLng = tLng(lng - 105, lat - 35);
+  const radLat = lat / 180 * Math.PI;
+  let magic = Math.sin(radLat);
+  magic = 1 - EE * magic * magic;
+  const sqrtMagic = Math.sqrt(magic);
+  dLat = (dLat * 180) / ((A * (1 - EE)) / (magic * sqrtMagic) * Math.PI);
+  dLng = (dLng * 180) / (A / sqrtMagic * Math.cos(radLat) * Math.PI);
+  return [lng + dLng, lat + dLat];
+}
+
+function nrStatus(msg) {
+  const el = $('#nearby-status');
+  if (el) el.textContent = msg;
+}
+
+function loadVillages() {
+  if (NR.data) return Promise.resolve(NR.data);
+  if (!NR.loading) {
+    NR.loading = fetchJSON(NR_DATA_URL).then((d) => {
+      NR.data = d;
+      return d;
+    });
+  }
+  return NR.loading;
+}
+
+function openNearby() {
+  $('#nearby-mask').classList.remove('hidden');
+  $('#nearby-sheet').classList.remove('hidden');
+  nrStatus('正在载入村级数据…');
+  loadVillages()
+    .then((d) => {
+      nrStatus(`已载入${d.provName} ${d.count.toLocaleString()} 个村 · 选一种方式定位起点`);
+      if (NR.origin) queryNearby(NR.origin.lng, NR.origin.lat, NR.origin.label);
+    })
+    .catch(() => nrStatus('村级数据载入失败，请检查网络后重试'));
+}
+
+function closeNearby() {
+  $('#nearby-mask').classList.add('hidden');
+  $('#nearby-sheet').classList.add('hidden');
+  setPickMode(false);
+}
+
+function setPickMode(on) {
+  NR.pickMode = on;
+  const fab = $('#nearby-fab');
+  if (fab) {
+    fab.classList.toggle('picking', on);
+    fab.textContent = on ? '✕' : '📍';
+  }
+  const pickBtn = $('#nearby-pick');
+  if (pickBtn) pickBtn.classList.toggle('on', on);
+}
+
+function enterPick() {
+  // 点选时先收起弹层，把地图让出来
+  if (NR.pickMode) { setPickMode(false); openNearby(); return; }
+  $('#nearby-mask').classList.add('hidden');
+  $('#nearby-sheet').classList.add('hidden');
+  setPickMode(true);
+  toast('点地图上任意位置，查看周边村落');
+}
+
+function queryNearby(lng, lat, label) {
+  if (!NR.data) return;
+  NR.origin = { lng, lat, label: label || '选定位置' };
+  const rows = [];
+  for (const p of NR.data.points) {
+    const d = haversineKm(lng, lat, p[3], p[4]);
+    if (d <= NR.radius) rows.push({ pac: p[0], name: p[1], town: p[2], dist: d });
+  }
+  rows.sort((a, b) => a.dist - b.dist);
+  NR.results = rows;
+  renderNearby();
+}
+
+function renderNearby() {
+  const list = $('#nearby-list');
+  if (!list) return;
+  const rows = NR.results;
+  const label = NR.origin ? NR.origin.label : '';
+  if (!rows.length) {
+    // 半径内没有村：给出最近若干条，避免空结果
+    const near = [];
+    for (const p of NR.data.points) {
+      near.push({ pac: p[0], name: p[1], town: p[2], dist: haversineKm(NR.origin.lng, NR.origin.lat, p[3], p[4]) });
+    }
+    near.sort((a, b) => a.dist - b.dist);
+    const top = near.slice(0, 8);
+    nrStatus(`${label} · ${NR.radius} km 内没有村落，下面是最近的 ${top.length} 个`);
+    list.innerHTML = top.map(nrRowHTML).join('');
+    return;
+  }
+  nrStatus(`${label} · ${NR.radius} km 内共 ${rows.length} 个村，列出最近 ${Math.min(rows.length, 40)} 个`);
+  list.innerHTML = rows.slice(0, 40).map(nrRowHTML).join('');
+}
+
+function nrRowHTML(r) {
+  const dist = r.dist < 1 ? `${Math.round(r.dist * 1000)} m` : `${r.dist.toFixed(1)} km`;
+  return `<div class="nr-row" data-pac="${r.pac}">
+    <span class="nr-name">${r.name}<span class="nr-town"> · ${r.town || '—'}</span></span>
+    <span class="nr-dist">${dist}</span>
+  </div>`;
+}
+
+function geoLocate() {
+  if (!navigator.geolocation) { nrStatus('当前环境不支持定位'); return; }
+  nrStatus('正在获取定位…');
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const [lng, lat] = wgs2gcj(pos.coords.longitude, pos.coords.latitude);
+      queryNearby(lng, lat, '我的位置');
+    },
+    (err) => nrStatus(`定位失败：${err && err.message ? err.message : '未授权或超时'}`),
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+  );
+}
+
+function searchVillage(q) {
+  const kw = (q || '').trim();
+  if (kw.length < 1) { renderNearby(); return; }
+  if (!NR.data) return;
+  const hits = [];
+  for (const p of NR.data.points) {
+    if (p[1].includes(kw) || (p[2] && p[2].includes(kw))) {
+      hits.push({ pac: p[0], name: p[1], town: p[2], lng: p[3], lat: p[4] });
+      if (hits.length >= 30) break;
+    }
+  }
+  const list = $('#nearby-list');
+  if (!hits.length) { nrStatus(`没有匹配「${kw}」的村`); list.innerHTML = ''; return; }
+  nrStatus(`「${kw}」匹配 ${hits.length} 条，点一条查看它周边的村`);
+  list.innerHTML = hits
+    .map((h) => `<div class="nr-row" data-lng="${h.lng}" data-lat="${h.lat}" data-label="${h.name}">
+      <span class="nr-name">${h.name}<span class="nr-town"> · ${h.town || '—'}</span></span>
+      <span class="nr-dist">查看周边 ›</span></div>`)
+    .join('');
+}
+
+/* 地图像素 → 经纬度（ECharts map 系列） */
+function onMapZrClick(e) {
+  if (!NR.pickMode) return;
+  const pt = [e.offsetX, e.offsetY];
+  let lngLat = null;
+  for (const opt of [{ seriesIndex: 0 }, { geoIndex: 0 }]) {
+    try {
+      const v = S.chart.convertFromPixel(opt, pt);
+      if (Array.isArray(v) && isFinite(v[0]) && isFinite(v[1])) { lngLat = v; break; }
+    } catch (_) { /* 尝试下一种坐标系 */ }
+  }
+  if (!lngLat || !(lngLat[0] > 70 && lngLat[0] < 140 && lngLat[1] > 0 && lngLat[1] < 56)) {
+    toast('没取到坐标，请点在地图范围内部');
+    return;
+  }
+  setPickMode(false);
+  loadVillages().then(() => {
+    openNearby();
+    queryNearby(lngLat[0], lngLat[1], '地图点选');
+  });
+}
+
+function bindNearby() {
+  const fab = $('#nearby-fab');
+  if (!fab) return;
+  fab.addEventListener('click', () => {
+    if (NR.pickMode) { setPickMode(false); toast('已取消点选'); return; }
+    openNearby();
+  });
+  $('#nearby-close').addEventListener('click', closeNearby);
+  $('#nearby-mask').addEventListener('click', closeNearby);
+  $('#nearby-geo').addEventListener('click', geoLocate);
+  $('#nearby-pick').addEventListener('click', enterPick);
+
+  $$('#nearby-radius button').forEach((b) => {
+    b.addEventListener('click', () => {
+      $$('#nearby-radius button').forEach((x) => x.classList.toggle('on', x === b));
+      NR.radius = Number(b.dataset.km) || 10;
+      if (NR.origin) queryNearby(NR.origin.lng, NR.origin.lat, NR.origin.label);
+      else nrStatus(`半径已设为 ${NR.radius} km，请先定位起点`);
+    });
+  });
+
+  const si = $('#nearby-search');
+  si.addEventListener('input', (e) => searchVillage(e.target.value));
+
+  $('#nearby-list').addEventListener('click', (e) => {
+    const row = e.target.closest('.nr-row');
+    if (!row) return;
+    if (row.dataset.lng) {
+      const lng = Number(row.dataset.lng);
+      const lat = Number(row.dataset.lat);
+      si.value = '';
+      queryNearby(lng, lat, row.dataset.label || '该村');
+    }
+  });
+}
+
+/* 测试钩子：供自动化验证直接驱动周边发现，不影响正常使用 */
+window.__nr = {
+  state: NR,
+  load: loadVillages,
+  open: openNearby,
+  query(lng, lat, label) {
+    return loadVillages().then(() => {
+      openNearby();
+      queryNearby(lng, lat, label);
+      return NR.results.length;
+    });
+  },
+  wgs2gcj,
+  haversineKm,
+};
+
 /* ================= 启动 ================= */
 async function boot() {
   loadRecords();
@@ -1045,6 +1305,7 @@ async function boot() {
 
   S.chart = echarts.init($('#map'));
   S.chart.on('click', onMapClick);
+  S.chart.getZr().on('click', onMapZrClick);   // 周边发现：地图点选取坐标
   window.addEventListener('resize', () => S.chart.resize());
 
   $$('#tabbar button').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
@@ -1061,6 +1322,7 @@ async function boot() {
 
   bindSheet();
   bindMe();
+  bindNearby();
   applyTheme();
   applyInstallGuide();
   // 首次用户手势内恢复 AudioContext，使后续特效音效可正常播放

@@ -19,3 +19,6 @@ tests/vf2/
 # ===== 云特效中间/预览素材（运行时只用 cloud_l.png / cloud_r.png） =====
 src/assets/fx/_preview*
 src/assets/fx/A_single*
+
+# 村级数据下载缓存（体积大，可重新生成）
+tools/village/cache/

@@ -38,6 +38,7 @@
   <section id="view-map" class="view">
     <div id="map"></div>
     <div id="map-hint">点击省份，点亮你的足迹</div>
+    <button id="nearby-fab" title="周边发现" aria-label="周边发现">📍</button>
   </section>
 
   <!-- 清单视图 -->
@@ -94,10 +95,36 @@
     </div>
     <div class="me-block">
       <h3>关于</h3>
-      <p class="me-desc">城市足迹 v2.9 · 数据仅存本机，不上传任何服务器。<br>地图数据来源：高德 DataV GeoAtlas（中国）、Natural Earth（世界）。</p>
+      <p class="me-desc">城市足迹 v2.10 · 数据仅存本机，不上传任何服务器。<br>地图数据来源：高德 DataV GeoAtlas（中国）、Natural Earth（世界）。<br>村落点位来源：china-village-boundaries 开源整理（2016±，CC0，原始权利不明），仅供参考，不作导航依据。</p>
     </div>
   </section>
 </main>
+
+<!-- 周边发现弹层 -->
+<div id="nearby-mask" class="hidden"></div>
+<section id="nearby-sheet" class="hidden">
+  <div class="sheet-handle"></div>
+  <div class="sheet-head-row">
+    <h2>周边发现</h2>
+    <button id="nearby-close" class="nr-icon-btn" aria-label="关闭">✕</button>
+  </div>
+  <p id="nearby-sub">基于开源村级点位 · 当前为云南试点</p>
+  <div id="nearby-actions">
+    <button id="nearby-geo" class="nr-btn">📡 用我的定位</button>
+    <button id="nearby-pick" class="nr-btn">🗺️ 地图点选</button>
+  </div>
+  <div id="nearby-radius">
+    <button data-km="5">5 km</button>
+    <button data-km="10" class="on">10 km</button>
+    <button data-km="20">20 km</button>
+    <button data-km="50">50 km</button>
+  </div>
+  <div class="search-box nr-search-box">
+    <input id="nearby-search" type="search" placeholder="搜村名，查看该村周边，如：磨憨村委会">
+  </div>
+  <p id="nearby-status">正在载入村级数据…</p>
+  <div id="nearby-list"></div>
+</section>
 
 <!-- 底部 Tab 栏 -->
 <nav id="tabbar">
