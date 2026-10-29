@@ -1,5 +1,5 @@
 /* 城市足迹 Service Worker：核心预缓存 + 省级地图运行时缓存，全离线可用 */
-const CACHE = 'fp-v22';
+const CACHE = 'fp-v23';
 const CORE = [
   './',
   './index.html',

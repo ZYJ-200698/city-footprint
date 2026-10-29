@@ -1032,15 +1032,59 @@ function switchTab(tab) {
    原则：点位只用于「算距离」，不用于「画地图」——底图合规性由现有地图负责。
    坐标红线：浏览器定位返回 WGS84，必须转 GCJ-02 再与村点比较，否则偏移数百米。 */
 const NR = {
-  data: null,
-  loading: null,
+  index: null,       // assets/data/village/index.json
+  provs: {},         // 省代码 -> 点位数组（懒加载）
+  loadingIdx: null,
   radius: 10,
   pickMode: false,
   origin: null,
   results: [],
+  loadedProvs: [],
 };
 
-const NR_DATA_URL = 'assets/data/village/52.json';
+const NR_INDEX_URL = 'assets/data/village/index.json';
+
+/* 全国村级点位是分省文件，按需加载：只取与查询点相关的省份 */
+function loadIndex() {
+  if (NR.index) return Promise.resolve(NR.index);
+  if (!NR.loadingIdx) {
+    NR.loadingIdx = fetchJSON(NR_INDEX_URL).then((d) => {
+      NR.index = d;
+      return d;
+    });
+  }
+  return NR.loadingIdx;
+}
+
+function loadProv(code) {
+  if (NR.provs[code]) return Promise.resolve(NR.provs[code]);
+  const item = (NR.index?.provinces || []).find((p) => p.code === code);
+  if (!item) return Promise.resolve([]);
+  return fetchJSON('assets/data/village/' + item.file).then((d) => {
+    NR.provs[code] = d.points || [];
+    return NR.provs[code];
+  });
+}
+
+/* 选出与查询点相关的省份：bounds 外扩半径后包含该点；若都不含则取最近的 3 个 */
+function pickProvCodes(lng, lat, radiusKm) {
+  const dLat = Math.max(radiusKm, 50) / 111;
+  const dLng = dLat / Math.max(0.2, Math.cos(lat * Math.PI / 180));
+  const inside = [];
+  const near = [];
+  for (const p of NR.index?.provinces || []) {
+    const b = p.bounds;
+    if (!b) continue;
+    const [x1, y1, x2, y2] = b;
+    if (lng >= x1 - dLng && lng <= x2 + dLng && lat >= y1 - dLat && lat <= y2 + dLat) inside.push(p.code);
+    const dx = Math.max(x1 - lng, 0, lng - x2);
+    const dy = Math.max(y1 - lat, 0, lat - y2);
+    near.push({ code: p.code, d: Math.hypot(dx, dy) });
+  }
+  if (inside.length) return inside;
+  near.sort((a, b) => a.d - b.d);
+  return near.slice(0, 3).map((o) => o.code);
+}
 
 function haversineKm(aLng, aLat, bLng, bLat) {
   const R = 6371;
@@ -1088,27 +1132,19 @@ function nrStatus(msg) {
   if (el) el.textContent = msg;
 }
 
-function loadVillages() {
-  if (NR.data) return Promise.resolve(NR.data);
-  if (!NR.loading) {
-    NR.loading = fetchJSON(NR_DATA_URL).then((d) => {
-      NR.data = d;
-      return d;
-    });
-  }
-  return NR.loading;
-}
-
 function openNearby() {
   $('#nearby-mask').classList.remove('hidden');
   $('#nearby-sheet').classList.remove('hidden');
   nrStatus('正在载入村级数据…');
-  loadVillages()
-    .then((d) => {
-      nrStatus(`已载入${d.provName} ${d.count.toLocaleString()} 个村 · 选一种方式定位起点`);
+  loadIndex()
+    .then((idx) => {
+      const loaded = NR.loadedProvs.length
+        ? `（已加载 ${NR.loadedProvs.length} 省 ${Object.values(NR.provs).reduce((a, b) => a + b.length, 0).toLocaleString()} 个村）`
+        : '';
+      nrStatus(`全国已收录 ${idx.provinces.length} 省 / ${idx.count.toLocaleString()} 个村${loaded} · 定位或点选后按需加载`);
       if (NR.origin) queryNearby(NR.origin.lng, NR.origin.lat, NR.origin.label);
     })
-    .catch(() => nrStatus('村级数据载入失败，请检查网络后重试'));
+    .catch(() => nrStatus('村级数据目录载入失败，请检查网络后重试'));
 }
 
 function closeNearby() {
@@ -1137,13 +1173,29 @@ function enterPick() {
   toast('点地图上任意位置，查看周边村落');
 }
 
-function queryNearby(lng, lat, label) {
-  if (!NR.data) return;
+function allLoadedPoints() {
+  const out = [];
+  for (const code of NR.loadedProvs) {
+    const pts = NR.provs[code];
+    if (pts) out.push(pts);
+  }
+  return out;
+}
+
+async function queryNearby(lng, lat, label) {
   NR.origin = { lng, lat, label: label || '选定位置' };
+  nrStatus('正在加载周边省份数据…');
+  await loadIndex();
+  const codes = pickProvCodes(lng, lat, Math.max(NR.radius, 50));
+  await Promise.all(codes.map(loadProv));
+  NR.loadedProvs = Array.from(new Set([...NR.loadedProvs, ...codes]));
   const rows = [];
-  for (const p of NR.data.points) {
-    const d = haversineKm(lng, lat, p[3], p[4]);
-    if (d <= NR.radius) rows.push({ pac: p[0], name: p[1], town: p[2], dist: d });
+  for (const code of codes) {
+    const pts = NR.provs[code] || [];
+    for (const p of pts) {
+      const d = haversineKm(lng, lat, p[3], p[4]);
+      if (d <= NR.radius) rows.push({ pac: p[0], name: p[1], town: p[2], dist: d });
+    }
   }
   rows.sort((a, b) => a.dist - b.dist);
   NR.results = rows;
@@ -1158,8 +1210,10 @@ function renderNearby() {
   if (!rows.length) {
     // 半径内没有村：给出最近若干条，避免空结果
     const near = [];
-    for (const p of NR.data.points) {
-      near.push({ pac: p[0], name: p[1], town: p[2], dist: haversineKm(NR.origin.lng, NR.origin.lat, p[3], p[4]) });
+    for (const pts of allLoadedPoints()) {
+      for (const p of pts) {
+        near.push({ pac: p[0], name: p[1], town: p[2], dist: haversineKm(NR.origin.lng, NR.origin.lat, p[3], p[4]) });
+      }
     }
     near.sort((a, b) => a.dist - b.dist);
     const top = near.slice(0, 8);
@@ -1192,20 +1246,36 @@ function geoLocate() {
   );
 }
 
-function searchVillage(q) {
+async function searchVillage(q) {
   const kw = (q || '').trim();
   if (kw.length < 1) { renderNearby(); return; }
-  if (!NR.data) return;
-  const hits = [];
-  for (const p of NR.data.points) {
-    if (p[1].includes(kw) || (p[2] && p[2].includes(kw))) {
-      hits.push({ pac: p[0], name: p[1], town: p[2], lng: p[3], lat: p[4] });
-      if (hits.length >= 30) break;
+  await loadIndex().catch(() => null);
+  if (!NR.index) { nrStatus('数据目录未就绪'); return; }
+
+  // 村名搜索需要全国范围：把尚未加载的省份按批补上
+  const unloaded = NR.index.provinces.map((p) => p.code).filter((c) => !NR.provs[c]);
+  if (unloaded.length) {
+    nrStatus(`正在加载全国 ${NR.index.provinces.length} 省数据以便搜索（已加载 ${NR.index.provinces.length - unloaded.length} 省）…`);
+    for (let i = 0; i < unloaded.length; i += 4) {
+      await Promise.all(unloaded.slice(i, i + 4).map((c) => loadProv(c).catch(() => [])));
+      nrStatus(`正在加载全国数据… ${Math.min(i + 4, unloaded.length)}/${unloaded.length} 省`);
     }
+    NR.loadedProvs = NR.index.provinces.map((p) => p.code);
+  }
+
+  const hits = [];
+  for (const pts of allLoadedPoints()) {
+    for (const p of pts) {
+      if (p[1].includes(kw) || (p[2] && p[2].includes(kw))) {
+        hits.push({ pac: p[0], name: p[1], town: p[2], lng: p[3], lat: p[4] });
+        if (hits.length >= 40) break;
+      }
+    }
+    if (hits.length >= 40) break;
   }
   const list = $('#nearby-list');
   if (!hits.length) { nrStatus(`没有匹配「${kw}」的村`); list.innerHTML = ''; return; }
-  nrStatus(`「${kw}」匹配 ${hits.length} 条，点一条查看它周边的村`);
+  nrStatus(`「${kw}」匹配 ${hits.length}${hits.length >= 40 ? '+' : ''} 条，点一条查看它周边的村`);
   list.innerHTML = hits
     .map((h) => `<div class="nr-row" data-lng="${h.lng}" data-lat="${h.lat}" data-label="${h.name}">
       <span class="nr-name">${h.name}<span class="nr-town"> · ${h.town || '—'}</span></span>
@@ -1229,10 +1299,8 @@ function onMapZrClick(e) {
     return;
   }
   setPickMode(false);
-  loadVillages().then(() => {
-    openNearby();
-    queryNearby(lngLat[0], lngLat[1], '地图点选');
-  });
+  openNearby();
+  queryNearby(lngLat[0], lngLat[1], '地图点选');
 }
 
 function bindNearby() {
@@ -1274,14 +1342,13 @@ function bindNearby() {
 /* 测试钩子：供自动化验证直接驱动周边发现，不影响正常使用 */
 window.__nr = {
   state: NR,
-  load: loadVillages,
+  loadIndex,
+  loadProv,
   open: openNearby,
-  query(lng, lat, label) {
-    return loadVillages().then(() => {
-      openNearby();
-      queryNearby(lng, lat, label);
-      return NR.results.length;
-    });
+  async query(lng, lat, label) {
+    openNearby();
+    await queryNearby(lng, lat, label);
+    return NR.results.length;
   },
   wgs2gcj,
   haversineKm,
