@@ -117,6 +117,31 @@ def main():
         page.wait_for_timeout(600)
         page.screenshot(path=os.path.join(HERE, "v211_nearby.png"))
 
+        # 4) 逐省遍历：每省取自身一个点位作为查询点，要求 50km 内至少 1 个村
+        prov_files = [p for p in sorted(os.listdir(os.path.join(PROJECT, "src", "assets", "data", "village")))
+                      if p.endswith(".json") and p != "index.json"]
+        bad = []
+        for fn in prov_files:
+            with open(os.path.join(PROJECT, "src", "assets", "data", "village", fn), encoding="utf-8") as fh:
+                d = json.load(fh)
+            pts = d["points"]
+            if not pts:
+                bad.append(f"{d['provName']}:空")
+                continue
+            lng, lat = pts[len(pts) // 2][3], pts[len(pts) // 2][4]
+            n = page.evaluate(
+                """async ([lng, lat, label]) => {
+                  const st = window.__nr.state;
+                  st.radius = 50;
+                  return await window.__nr.query(lng, lat, label);
+                }""",
+                [lng, lat, d["provName"]],
+            )
+            if n < 1:
+                bad.append(f"{d['provName']}:0")
+        check(f"逐省遍历 {len(prov_files)} 省均有村落返回", not bad, "失败：" + ",".join(bad) if bad else "全部通过")
+        page.evaluate("() => { window.__nr.state.radius = 10; }")
+
         page.click("#nearby-close")
         page.wait_for_timeout(300)
         check("关闭生效", page.evaluate("() => document.querySelector('#nearby-sheet').classList.contains('hidden')"))
